@@ -454,8 +454,9 @@ var mspHelper = (function () {
                 break;
             case MSPCodes.MSP2_INAV_LOGIC_CONDITIONS:
                 FC.LOGIC_CONDITIONS.flush();
+                console.log(data.byteLength)
                 if (data.byteLength % 14 === 0) {
-                    for (let i = 0; i < data.byteLength; i += 14) {
+                    for (let i = 0; i < data.byteLength; i += 15) {
                         FC.LOGIC_CONDITIONS.put(new LogicCondition(
                             data.getInt8(i),
                             data.getInt8(i + 1),
@@ -464,9 +465,11 @@ var mspHelper = (function () {
                             data.getInt32(i + 4, true),
                             data.getUint8(i + 8),
                             data.getInt32(i + 9, true),
-                            data.getInt8(i + 13)
+                            data.getInt8(i + 13),
+                            data.getUint8(i + 14)
                         ));
                     }
+                    console.log(FC.LOGIC_CONDITIONS)
                 }
                 break;
 
@@ -479,7 +482,9 @@ var mspHelper = (function () {
                     data.getInt32(4, true),
                     data.getUint8(8),
                     data.getInt32(9, true),
-                    data.getInt8(13)
+                    data.getInt8(13),
+                    data.getInt8(14)
+
                 ));
                 break;
 
@@ -2403,7 +2408,7 @@ var mspHelper = (function () {
 
             let buffer = [];
 
-            // send one at a time, with index, 14 bytes per one condition
+            // send one at a time, with index, 15 bytes per one condition
 
             let condition = FC.LOGIC_CONDITIONS.get()[conditionIndex];
 
@@ -2422,6 +2427,8 @@ var mspHelper = (function () {
             buffer.push(BitHelper.specificByte(condition.getOperandBValue(), 2));
             buffer.push(BitHelper.specificByte(condition.getOperandBValue(), 3));
             buffer.push(condition.getFlags());
+            buffer.push(condition.getCodeGroup());
+
 
             // prepare for next iteration
             conditionIndex++;
