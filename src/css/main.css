@@ -2391,3 +2391,84 @@ ol li {
     border-radius: 3px;
     border: 1px solid #000000;
 }
+
+/* Make the titlebar show a hand cursor */
+.gui_box_titlebar.telemetryToggle {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Arrow style (UTF-8 triangle) */
+.gui_box_titlebar .arrow-indicator {
+    font-size: 14px;
+    transition: transform 0.25s ease;
+}
+
+/* Rotate arrow when open */
+.gui_box_titlebar.telemetryToggle.open .arrow-indicator {
+    transform: rotate(90deg);
+}
+
+/* Make the table fill the entire parent container */
+#telemetrySensorsTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+/* Style table cells */
+#telemetrySensorsTable td,
+#telemetrySensorsTable th {
+    padding: 8px;
+    border-bottom: 1px solid #ccc;
+}
+
+/* Add vertical divider in the center */
+#telemetrySensorsTable td:nth-child(2) {
+    border-right: 1px solid #ccc;
+}
+
+/* Space after the vertical divider */
+#telemetrySensorsTable td:nth-child(3) {
+    padding-left: 20px;
+}
+
+/* Remove old full-row hover */
+#telemetrySensorsTable tr:hover {
+    background-color: transparent;
+}
+
+/* Highlight LEFT sensor (cells 1 and 2) on hover */
+#telemetrySensorsTable td:nth-child(1):hover,
+#telemetrySensorsTable td:nth-child(2):hover {
+    background-color: #e6f2ff;
+}
+#telemetrySensorsTable td:nth-child(1):hover ~ td:nth-child(2),
+#telemetrySensorsTable td:nth-child(2):hover ~ td:nth-child(2) {
+    background-color: #e6f2ff;
+}
+
+/* Highlight RIGHT sensor (cells 3 and 4) on hover */
+#telemetrySensorsTable td:nth-child(3):hover,
+#telemetrySensorsTable td:nth-child(4):hover {
+    background-color: #e6f2ff;
+}
+#telemetrySensorsTable td:nth-child(3):hover ~ td:nth-child(4),
+#telemetrySensorsTable td:nth-child(4):hover ~ td:nth-child(4) {
+    background-color: #e6f2ff;
+}
+
+/* Optional: header styling */
+#telemetrySensorsTable th {
+    text-align: left;
+    font-weight: bold;
+}
+
+#telemetrySensorsErrorMessage {
+    border: 2px solid #fbac00;      /* red frame */
+    padding: 6px 10px;          /* spacing for nicer look */
+    font-weight: bold;          /* bold text */
+    border-radius: 4px;         /* optional: rounded corners */
+    background-color: #fff3e0;
+}

@@ -956,6 +956,12 @@
     "configurationFrSkyOptions": {
         "message": "FrSky Options"
     },
+    "configurationtelemetrySensors": {
+        "message": "Telemetry custom sensors"
+    },
+    "configurationtelemetrySensors_HELP": {
+        "message": "Telemetry Sensors allow you to select which sensor data will be transmitted by the receiver.\nThis feature works only with CRSF Custom Telemetry or standard SmartPort telemetry.\nYour receiver supports a limited number of telemetry slots, so enable only the sensors you need."
+    },
     "configurationFrSkyOptions_HELP": {
         "message": "These options provide quick access to configure the SmartPort telemetry sensors to work with the OpenTX/EdgeTX and ETHOS telemetry LUA scripts. Please note that if you are using SBUS. You will need to set up SmartPort telemetry on a separate serial port."
     },

@@ -15,6 +15,58 @@ TABS.receiver = {
     rateChartHeight: 117
 };
 
+TABS.receiver.telemetrySensorsList = {
+    0: "None",
+    1: "Heartbeat",
+
+    3: "Battery voltage",
+    4: "Battery current",
+    5: "Battery energy consumption",
+    6: "Battery charge level",
+    7: "Battery cell count",
+    8: "Battery cell voltage",
+    9: "Battery all cell voltages",
+
+    12: "Altitude",
+    13: "Variometer",
+    11: "Heading",
+
+    14: "Attitude",
+    15: "Attitude pitch",
+    16: "Attitude roll",
+    17: "Attitude yaw",
+
+    18: "Acceleration X",
+    19: "Acceleration Y",
+    20: "Acceleration Z",
+
+    22: "GPS satellites",
+    23: "GPS HDOP",
+    24: "GPS coordinates",
+    25: "GPS altitude",
+    26: "GPS heading",
+    27: "GPS groundspeed",
+    28: "GPS home distance",
+    29: "GPS home direction",
+    30: "GPS azimuth",
+
+    31: "ESC RPM",
+    33: "ESC 1 RPM",
+    35: "ESC 2 RPM",
+    37: "ESC 3 RPM",
+    39: "ESC 4 RPM",
+
+    32: "ESC temperature",
+    34: "ESC 1 temperature",
+    36: "ESC 2 temperature",
+    38: "ESC 3 temperature",
+    40: "ESC 4 temperature",
+
+    42: "CPU load",
+    43: "Flight mode",
+    44: "Arming flags"
+}
+
 TABS.receiver.initialize = function (callback) {
     var self = this;
 
@@ -29,7 +81,8 @@ TABS.receiver.initialize = function (callback) {
         mspHelper.loadRcData,
         mspHelper.loadRcMap,
         mspHelper.loadRxConfig,
-        mspHelper.loadRcDeadband
+        mspHelper.loadRcDeadband,
+        mspHelper.loadTelemetrySensors,
     ];
 
     loadChain.push(mspHelper.loadRateProfileData);
@@ -71,10 +124,16 @@ TABS.receiver.initialize = function (callback) {
 
         $serialRxProvider.on('change', function() {
             const frSkyRXProviders = ["SBUS", "FPORT", "FPORT2", "FBUS"];
+            const CRSFRXProviders = ["CRSF"];
             
             if (frSkyRXProviders.includes($(this).find("option:selected").text())) {
                 $("#frSkyOptions").show();
+                $("#telemetrySensors").show();
+            } else if(CRSFRXProviders.includes($(this).find("option:selected").text())) {
+                $("#telemetrySensors").show();
+                $("#frSkyOptions").hide();
             } else {
+                $("#telemetrySensors").hide();
                 $("#frSkyOptions").hide();
             }
         });
@@ -286,7 +345,26 @@ TABS.receiver.initialize = function (callback) {
             }
 
             function save_rc_configs() {
-                MSP.send_message(MSPCodes.MSP_SET_RC_DEADBAND, mspHelper.crunch(MSPCodes.MSP_SET_RC_DEADBAND), false, storeSettings);
+                MSP.send_message(MSPCodes.MSP_SET_RC_DEADBAND, mspHelper.crunch(MSPCodes.MSP_SET_RC_DEADBAND), false, save_telemetry_sensors);
+            }
+
+            function save_telemetry_sensors() {
+                //no custom telemetry
+                if(FC.TELEMETRY_SENSORS.slot_count == 0){
+                    storeSettings();
+                    return;
+                }
+
+
+                let index = 0;
+
+                FC.TELEMETRY_SENSORS.sensors.fill(0);
+                $('input.telemetrySensorIndex[type="checkbox"]:checked').each(function(){
+                    FC.TELEMETRY_SENSORS.sensors[index] = $(this).data().sensorid;
+                    index++;
+                });
+
+                MSP.send_message(MSPCodes.MSP2_INAV_SET_TELEMETRY_SENSORS, mspHelper.crunch(MSPCodes.MSP2_INAV_SET_TELEMETRY_SENSORS), false, storeSettings);
             }
 
             function storeSettings() {
@@ -343,6 +421,95 @@ TABS.receiver.initialize = function (callback) {
         }
 
         interval.add('receiver_pull', get_rc_data, 25);
+
+        //////////////////////////////////////////////////////////////////////
+        // TELEMETRY SENSORS
+        if (FC.TELEMETRY_SENSORS.slot_count > 0) {
+            let sensors = Object.keys(TABS.receiver.telemetrySensorsList)
+                .map(Number)               // convert keys to numbers
+                .sort((a, b) => a - b)     // sort numeric keys
+                .filter(key => key !== 0)  // skip index 0
+                .map(key => ({
+                    id: key,
+                    name: TABS.receiver.telemetrySensorsList[key]
+                }));
+
+            // Split into two halves
+            let half = Math.ceil(sensors.length / 2);
+            let left = sensors.slice(0, half);
+            let right = sensors.slice(half);
+
+            let tbody = $("#telemetrySensorsTableBody");
+            tbody.empty();
+
+            // Build table rows
+            for (let i = 0; i < half; i++) {
+
+                let leftSensor = left[i];
+                let rightSensor = right[i];
+
+                let row = $("<tr></tr>");
+
+                // LEFT
+                if (leftSensor) {
+                    row.append(`
+                <td>${leftSensor.name}</td>
+                <td>
+                    <input class="telemetrySensorIndex toggle"
+                           id="telemetrySensorIndex${leftSensor.id}"
+                           data-sensorid="${leftSensor.id}"
+                           type="checkbox">
+                </td>
+            `);
+                } else {
+                    row.append("<td></td><td></td>");
+                }
+
+                // RIGHT
+                if (rightSensor) {
+                    row.append(`
+                <td>${rightSensor.name}</td>
+                <td>
+                    <input class="telemetrySensorIndex toggle"
+                           id="telemetrySensorIndex${rightSensor.id}"
+                           data-sensorid="${rightSensor.id}"
+                           type="checkbox">
+                </td>
+            `);
+                } else {
+                    row.append("<td></td><td></td>");
+                }
+
+                tbody.append(row);
+            }
+
+            GUI.switchery();
+
+            // Limit max selectable sensors
+            $('.telemetrySensorIndex').on('change', function () {
+                let totalActive = $('input.telemetrySensorIndex[type="checkbox"]:checked').length;
+                $('input.telemetrySensorIndex[type="checkbox"]:not(:checked)')
+                    .prop('disabled', totalActive > FC.TELEMETRY_SENSORS.slot_count);
+
+                if(totalActive > FC.TELEMETRY_SENSORS.slot_count){
+                    $('#telemetrySensorsErrorMessage').html('Sensor limit reached — you cannot add more telemetry sensors. Please disable an existing sensor to add another.').show();
+                }else{
+                    $('#telemetrySensorsErrorMessage').hide().html('');
+                }
+            });
+
+            // Pre-select sensors from config
+            $.each(FC.TELEMETRY_SENSORS.sensors, function (index, item) {
+                $("#telemetrySensorIndex" + item).prop('checked', true);
+            });
+
+            $('#telemetrySensors').show();
+
+        } else {
+            $('#telemetrySensors').hide();
+        }
+        //////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////
 
         GUI.content_ready(callback);
     }
