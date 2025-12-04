@@ -19,6 +19,10 @@ export default defineConfig((env) => {
       assetsInlineLimit: Number.MAX_SAFE_INTEGER,
       chunkSizeWarningLimit: 10240,
     },
+    /*server: { // no live preload
+      hmr: false,
+      watch: null,
+    },*/
     plugins: [
       inject({
         $: 'jquery',

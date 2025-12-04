@@ -92,6 +92,7 @@ var FC = {
     restartRequired: false,
     MAX_SERVO_RATE: 125,
     MIN_SERVO_RATE: 0,
+    TELEMETRY_SENSORS: null,
 
     isAirplane: function () {
         return (this.MIXER_CONFIG.platformType == PLATFORM.AIRPLANE);

@@ -687,6 +687,10 @@ var mspHelper = (function () {
                 console.log('RCMAP saved');
                 break;
 
+            case MSPCodes.MSP2_INAV_SET_TELEMETRY_SENSORS:
+                console.log('Telemetry sensors saved');
+                break;
+
             case MSPCodes.MSP_BOARD_ALIGNMENT:
                 FC.BOARD_ALIGNMENT.roll = data.getInt16(0, true); // -180 - 360
                 FC.BOARD_ALIGNMENT.pitch = data.getInt16(2, true); // -180 - 360
@@ -869,6 +873,16 @@ var mspHelper = (function () {
                 offset += 1;
                 FC.RX_CONFIG.receiver_type = data.getUint8(offset);
                 offset += 1;
+                break;
+
+            case MSPCodes.MSP2_INAV_TELEMETRY_SENSORS:
+                FC.TELEMETRY_SENSORS = {slot_count: 0, sensors: []}
+                FC.TELEMETRY_SENSORS.slot_count = data.getUint16(offset, true);
+                offset += 2;
+                for (let i = 0; i < FC.TELEMETRY_SENSORS.slot_count; i++) {
+                    FC.TELEMETRY_SENSORS.sensors.push(data.getUint16(offset, true));
+                    offset += 2;
+                }
                 break;
 
             case MSPCodes.MSP_FAILSAFE_CONFIG:
@@ -1799,6 +1813,12 @@ var mspHelper = (function () {
             case MSPCodes.MSP_SET_RX_MAP:
                 for (let i = 0; i < FC.RC_MAP.length; i++) {
                     buffer.push(FC.RC_MAP[i]);
+                }
+                break;
+            case MSPCodes.MSP2_INAV_SET_TELEMETRY_SENSORS:
+                for (let i = 0; i < FC.TELEMETRY_SENSORS.slot_count; i++) {
+                    buffer.push(BitHelper.lowByte(FC.TELEMETRY_SENSORS.sensors[i]));
+                    buffer.push(BitHelper.highByte(FC.TELEMETRY_SENSORS.sensors[i]));
                 }
                 break;
             case MSPCodes.MSP_SET_ACC_TRIM:
@@ -2910,6 +2930,10 @@ var mspHelper = (function () {
 
     self.loadRxConfig = function (callback) {
         MSP.send_message(MSPCodes.MSP_RX_CONFIG, false, false, callback);
+    };
+
+    self.loadTelemetrySensors = function (callback) {
+        MSP.send_message(MSPCodes.MSP2_INAV_TELEMETRY_SENSORS, false, false, callback);
     };
 
     self.load3dConfig = function (callback) {
