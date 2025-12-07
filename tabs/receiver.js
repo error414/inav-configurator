@@ -64,7 +64,8 @@ TABS.receiver.telemetrySensorsList = {
 
     42: "CPU load",
     43: "Flight mode",
-    44: "Arming flags"
+    44: "Profiles",
+    45: "Arming flags",
 }
 
 TABS.receiver.initialize = function (callback) {
