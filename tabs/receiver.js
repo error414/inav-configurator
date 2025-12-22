@@ -119,25 +119,33 @@ TABS.receiver.initialize = function (callback) {
             }
         });
 
-        let $serialRxProvider = $("#serialrx_provider");
+        var $telemetryModeSelect = $('#telemetryMode');
+        var $serialRxProvider = $("#serialrx_provider");
+
         $serialRxProvider.empty().append(serialRxProviders);
         $serialRxProvider.val(selectedRxProvider);
 
-        $serialRxProvider.on('change', function() {
+        let customTelemetryDisplay = function(){
             const frSkyRXProviders = ["SBUS", "FPORT", "FPORT2", "FBUS"];
             const CRSFRXProviders = ["CRSF"];
-            
-            if (frSkyRXProviders.includes($(this).find("option:selected").text())) {
+
+            if (frSkyRXProviders.includes($serialRxProvider.find("option:selected").text())) {
                 $("#frSkyOptions").show();
-                $("#telemetrySensors").show();
-            } else if(CRSFRXProviders.includes($(this).find("option:selected").text())) {
-                $("#telemetrySensors").show();
+            } else if(CRSFRXProviders.includes($serialRxProvider.find("option:selected").text())) {
                 $("#frSkyOptions").hide();
             } else {
-                $("#telemetrySensors").hide();
                 $("#frSkyOptions").hide();
             }
-        });
+
+            if((frSkyRXProviders.includes($serialRxProvider.find("option:selected").text()) || CRSFRXProviders.includes($serialRxProvider.find("option:selected").text())) && $telemetryModeSelect.find("option:selected").val() == 1){
+                $("#telemetrySensors").show();
+            }else{
+                $("#telemetrySensors").hide();
+            }
+        }
+
+        $serialRxProvider.on('change', customTelemetryDisplay);
+        $telemetryModeSelect.on('change', customTelemetryDisplay);
 
         $serialRxProvider.trigger("change");
 
@@ -512,6 +520,7 @@ TABS.receiver.initialize = function (callback) {
         //////////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////
 
+        customTelemetryDisplay();
         GUI.content_ready(callback);
     }
 };
