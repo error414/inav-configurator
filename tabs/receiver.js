@@ -99,7 +99,7 @@ TABS.receiver.initialize = function (callback) {
         Settings.saveInputs(onComplete);
     }
 
-    function process_html() {
+    function process_html(settingsPromise) {
         // translate to user-selected language
        i18n.localize();;
 
@@ -147,8 +147,6 @@ TABS.receiver.initialize = function (callback) {
         $serialRxProvider.on('change', customTelemetryDisplay);
         $telemetryModeSelect.on('change', customTelemetryDisplay);
 
-        $serialRxProvider.trigger("change");
-
         $receiverMode.on('change', function () {
             if ($(this).find("option:selected").text() == "SERIAL") {
                 $serialWrapper.show();
@@ -161,7 +159,11 @@ TABS.receiver.initialize = function (callback) {
             }
         });
 
-        $receiverMode.trigger("change");
+        // Wait for settings to load before triggering change events
+        // Trigger receiverMode which will trigger serialRxProvider when mode is SERIAL
+        settingsPromise.then(function() {
+            $receiverMode.trigger("change");
+        });
 
         // fill in data from RC_tuning
         $('.tunings .throttle input[name="mid"]').val(FC.RC_tuning.throttle_MID.toFixed(2));
@@ -397,7 +399,7 @@ TABS.receiver.initialize = function (callback) {
         });
 
         $("a.sticks").on('click', function () {
-            var mspWin = window.open("tabs/receiver_msp.html", "receiver_msp", "width=420,height=760,menubar=no,contextIsolation=no,nodeIntegration=yes");
+            var mspWin = window.open("tabs/receiver_msp.html", "receiver_msp", "width=420,height=760,menubar=no");
             
             mspWin.window.setRawRx = function (channels) {
                 if (CONFIGURATOR.connectionValid && GUI.active_tab != 'cli') {
