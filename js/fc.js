@@ -972,6 +972,16 @@ var FC = {
             'RC Channel 32',        // 57
             'RC Channel 33',        // 58
             'RC Channel 34',        // 59
+            'Mixer Switch Helper',  // 60
+            'Auto Transition Roll',         // 61
+            'Auto Transition Pitch',        // 62
+            'Auto Transition Yaw',          // 63
+            'Auto Transition Roll +',       // 64
+            'Auto Transition Roll -',       // 65
+            'Auto Transition Pitch +',      // 66
+            'Auto Transition Pitch -',      // 67
+            'Auto Transition Yaw +',        // 68
+            'Auto Transition Yaw -',        // 69
         ];
     },
     getServoMixInputName: function (input) {
