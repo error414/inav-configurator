@@ -568,6 +568,7 @@ OSD.initData = function () {
             units: null,
             stats_energy_unit: null,
             adsb_warning_style: null,
+            show_radar_peer_name: null,
         },
         alarms: {
             rssi: null,
@@ -1961,7 +1962,8 @@ OSD.constants = {
                     min_version: '8.0.0',
                     positionable: true,
                     preview:  function(osd_data) {
-                        return FONT.symbol(SYM.DIRECTION) + 'B' + FONT.symbol(SYM.SYM_HUD_SIGNAL_3) + FONT.symbol(SYM.SYM_HUD_CARDINAL) + "\n 150" + "\n" + FONT.symbol(SYM.AH_DECORATION_UP) + " 27" ;
+                        let showPeerName = OSD.data.preferences.show_radar_peer_name;
+                        return FONT.symbol(SYM.DIRECTION) + (showPeerName ? 'FAL' : 'B') + FONT.symbol(SYM.SYM_HUD_SIGNAL_3) + FONT.symbol(SYM.SYM_HUD_CARDINAL) + "\n 150" + "\n" + FONT.symbol(SYM.AH_DECORATION_UP) + " 27" ;
                     }
                 },
             ],
@@ -2448,7 +2450,7 @@ OSD.reload = function(callback) {
                 MSP.promise(MSPCodes.MSP2_INAV_OSD_PREFERENCES).then(function (resp) {
                     OSD.data.supported = true;
                     OSD.msp.decodePreferences(resp);
-                    
+
                     MSP.promise(MSPCodes.MSP2_INAV_CUSTOM_OSD_ELEMENTS).then(() => {
                         mspHelper.loadOsdCustomElements(() => {
                             MSP.promise(MSPCodes.MSP2_INAV_LOGIC_CONDITIONS_CONFIGURED).then(() => {
@@ -2643,6 +2645,7 @@ OSD.msp = {
         result.push8(p.sidebar_scroll_arrows);
         result.push8(p.units);
         result.push8(p.stats_energy_unit);
+        result.push8(p.show_radar_peer_name);
         result.push8(p.adsb_warning_style);
 
         return result;
@@ -2661,6 +2664,7 @@ OSD.msp = {
         p.sidebar_scroll_arrows = prefs.readU8();
         p.units = prefs.readU8();
         p.stats_energy_unit = prefs.readU8();
+        p.show_radar_peer_name = prefs.readU8();
         p.adsb_warning_style = prefs.readU8();
     },
 

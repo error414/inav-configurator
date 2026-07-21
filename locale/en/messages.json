@@ -4050,6 +4050,12 @@
     "osd_hud_radar_range_min": {
         "message": "Minimum radar range"
     },
+    "osd_show_radar_peer_name": {
+        "message": "Show peer name"
+    },
+    "osd_show_radar_peer_name_help": {
+        "message": "Show first three letters from peer name"
+    },
     "osd_hud_radar_range_min_help": {
         "message": "Radar aircrafts closer than this will not be displayed in the HUD."
     },
