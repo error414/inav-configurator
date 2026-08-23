@@ -1962,7 +1962,10 @@ OSD.constants = {
                     min_version: '8.0.0',
                     positionable: true,
                     preview:  function(osd_data) {
-                        let showPeerName = OSD.data.preferences.show_radar_peer_name;
+                        // Read the live checkbox state from the DOM so the preview updates
+                        // immediately on toggle. OSD.data.preferences.show_radar_peer_name is
+                        // only refreshed from the FC on a full reload, so it would be stale here.
+                        let showPeerName = $('[data-setting="osd_show_radar_peer_name"]').prop('checked');
                         return FONT.symbol(SYM.DIRECTION) + (showPeerName ? 'FAL' : 'B') + FONT.symbol(SYM.SYM_HUD_SIGNAL_3) + FONT.symbol(SYM.SYM_HUD_CARDINAL) + "\n 150" + "\n" + FONT.symbol(SYM.AH_DECORATION_UP) + " 27" ;
                     }
                 },
