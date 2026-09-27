@@ -39,6 +39,9 @@ mixerTab.initialize = function (callback, scrollPosition) {
 
     loadChainer.setChain([
         mspHelper.loadMixerConfig,
+        mspHelper.loadMiscV2,
+        mspHelper.loadFeatures,
+        mspHelper.loadAdvancedConfig,
         mspHelper.loadMotors,
         mspHelper.loadServoMixRules,
         mspHelper.loadMotorMixRules,
@@ -676,23 +679,164 @@ mixerTab.initialize = function (callback, scrollPosition) {
             'tri':         [{x:100,y:160},{x:160,y:40},{x:40,y:40}],
         };
 
+        // First digital protocol in motorPwmProtocolTypes_e (see tabs/outputs.js).
+        const PROTOCOL_DSHOT150 = 4;
+        // Firmware constants (INAV maintenance-10.x, flight/mixer.c): DShot maps
+        // mincommand..2000 onto DSHOT 48..2047 - the upper bound is the constant
+        // 2000, not max_throttle. Values below the idle threshold
+        // (mincommand + throttle_idle % of that range) give DSHOT 0 = motor stopped.
+        const DSHOT_MAX_VALUE = 2000;
+        const DSHOT_3D_NEUTRAL = 1500;
+        // Defaults used when a setting cannot be read from the FC.
+        const DEFAULT_THROTTLE_IDLE_PERCENT = 8.0;     // throttle_idle (battery profile)
+        const DEFAULT_3D_NEUTRAL = 1460;               // 3d_neutral
+        const DEFAULT_3D_DEADBAND_THROTTLE = 50;       // 3d_deadband_throttle
+        // Spin ~10 % into the usable throttle range: clearly visible, never a real spin-up.
+        const WIZARD_SPIN_FRACTION = 0.10;
+        // Background pollers sharing the MSP queue with the wizard; paused while it runs
+        // so their traffic cannot delay a motor edge.
+        const WIZARD_PAUSED_INTERVALS = ['global_data_refresh', 'logic_conditions_pull'];
+
         // Motor Wizard State Machine
         const wizardState = {
             currentMotor: 0,        // Which motor we're currently locating
             motorPositions: {},     // Map: motorIndex -> positionIndex
             locateInterval: null,   // Interval for repeating locate command
             isActive: false,        // Is wizard in progress?
-            savedDshotBeeper: null  // Original dshot_beeper_enabled value to restore
+            savedDshotBeeper: null, // Original dshot_beeper_enabled value to restore
+            settingsLoaded: null,   // Promise resolved once the FC settings below are cached
+            throttleIdlePercent: DEFAULT_THROTTLE_IDLE_PERCENT,
+            neutral3d: DEFAULT_3D_NEUTRAL,
+            deadband3dThrottle: DEFAULT_3D_DEADBAND_THROTTLE,
+            pausedIntervals: []     // names actually paused by us, to resume exactly those
         };
 
-        function sendMotorValues(motorIndex, value) {
+        function isDshotProtocol() {
+            return Number.parseInt(FC.ADVANCED_CONFIG.motorPwmProtocol, 10) >= PROTOCOL_DSHOT150;
+        }
+
+        function isReversibleMotors() {
+            return FC.isFeatureEnabled('REVERSIBLE_MOTORS');
+        }
+
+        function clampMotorValue(value) {
+            return Math.min(2000, Math.max(1000, Math.round(value)));
+        }
+
+        // Read the settings the spin/stop values depend on, once per wizard open.
+        function loadWizardSettings() {
+            wizardState.throttleIdlePercent = DEFAULT_THROTTLE_IDLE_PERCENT;
+            wizardState.neutral3d = DEFAULT_3D_NEUTRAL;
+            wizardState.deadband3dThrottle = DEFAULT_3D_DEADBAND_THROTTLE;
+
+            function read(name, apply) {
+                return mspHelper.getSetting(name).then(function (setting) {
+                    if (setting && Number.isFinite(setting.value)) {
+                        apply(setting.value);
+                    }
+                }).catch(function () {
+                    // keep the default
+                });
+            }
+
+            var reads = [read('throttle_idle', function (v) { wizardState.throttleIdlePercent = v; })];
+            if (isDshotProtocol() && isReversibleMotors()) {
+                reads.push(read('3d_neutral', function (v) { wizardState.neutral3d = v; }));
+                reads.push(read('3d_deadband_throttle', function (v) { wizardState.deadband3dThrottle = v; }));
+            }
+            wizardState.settingsLoaded = Promise.all(reads);
+            return wizardState.settingsLoaded;
+        }
+
+        // Value the firmware outputs as "motor stopped".
+        //   DShot non-3D: mincommand (below the idle threshold -> DSHOT 0)
+        //   DShot 3D:     3d_neutral (below 1500 + 3d_deadband_throttle -> DSHOT 0)
+        //   analog:       mincommand, passed through unchanged
+        function getMotorStopValue() {
+            if (isDshotProtocol() && isReversibleMotors()) {
+                return clampMotorValue(wizardState.neutral3d);
+            }
+            return clampMotorValue(FC.MISC.mincommand);
+        }
+
+        // Value that visibly twitches the motor without a real spin-up.
+        //   DShot non-3D: 10 % of mincommand..2000, but at least 20 above the idle
+        //                 threshold so it is never mapped to DSHOT 0 (default FC -> 1100, DSHOT ~248)
+        //   DShot 3D:     10 % of the forward range above 1500 + 3d_deadband_throttle (default -> ~1595)
+        //   analog:       max(throttle_idle, 10) % of mincommand..maxthrottle
+        function getMotorSpinValue() {
+            var min = FC.MISC.mincommand;
+            var idle = wizardState.throttleIdlePercent;
+            if (isDshotProtocol()) {
+                if (isReversibleMotors()) {
+                    var forwardStart = DSHOT_3D_NEUTRAL + wizardState.deadband3dThrottle;
+                    return clampMotorValue(forwardStart + WIZARD_SPIN_FRACTION * (DSHOT_MAX_VALUE - forwardStart));
+                }
+                var idleThreshold = min + idle / 100 * (DSHOT_MAX_VALUE - min);
+                return clampMotorValue(Math.max(min + WIZARD_SPIN_FRACTION * (DSHOT_MAX_VALUE - min), idleThreshold + 20));
+            }
+            return clampMotorValue(min + Math.max(idle, 10) / 100 * (FC.MISC.maxthrottle - min));
+        }
+
+        // MSP_SET_MOTOR delivery: one message in flight, one pending slot (latest wins).
+        // The MSP queue rejects a second MSP_SET_MOTOR until the FC has replied and
+        // MSP.send_message() would then retry the rejected one every 150 ms for
+        // seconds - stale spin values reaching the FC long after a stop. So the
+        // next message goes out only from the reply callback of the previous one.
+        // Every stop (stop button, position click, modal close) uses this same path,
+        // so a stop issued during an in-flight spin is sent right after its reply.
+        var MOTOR_REPLY_TIMEOUT_MS = 500;   // lost reply: unblock and send a stop
+        var motorSend = {
+            inFlight: false,
+            replyTimer: null,
+            pending: null       // newest {motorIndex, value} not yet sent
+        };
+
+        function onMotorReply() {
+            if (!motorSend.inFlight) {
+                return;
+            }
+            clearTimeout(motorSend.replyTimer);
+            motorSend.replyTimer = null;
+            motorSend.inFlight = false;
+            flushMotorSend();
+        }
+
+        function onMotorReplyTimeout() {
+            console.log('[motor pulse] MSP_SET_MOTOR reply timed out, sending stop');
+            motorSend.replyTimer = null;
+            motorSend.inFlight = false;
+            if (!motorSend.pending) {
+                motorSend.pending = { motorIndex: -1, value: getMotorStopValue() };
+            }
+            flushMotorSend();
+        }
+
+        function flushMotorSend() {
+            if (motorSend.inFlight || !motorSend.pending) {
+                return;
+            }
+            var req = motorSend.pending;
+            motorSend.pending = null;
+
+            var stopValue = getMotorStopValue();
             var buffer = [];
             for (var i = 0; i < 8; i++) {
-                var val = (i === motorIndex) ? value : FC.MISC.mincommand;
+                var val = (i === req.motorIndex) ? req.value : stopValue;
                 buffer.push(BitHelper.lowByte(val));
                 buffer.push(BitHelper.highByte(val));
             }
-            MSP.send_message(MSPCodes.MSP_SET_MOTOR, buffer);
+            motorSend.inFlight = true;
+            motorSend.replyTimer = setTimeout(onMotorReplyTimeout, MOTOR_REPLY_TIMEOUT_MS);
+            var accepted = MSP.send_message(MSPCodes.MSP_SET_MOTOR, buffer, false, onMotorReply);
+            if (!accepted) {
+                onMotorReply();
+            }
+        }
+
+        function sendMotorValues(motorIndex, value) {
+            motorSend.pending = { motorIndex: motorIndex, value: value };
+            flushMotorSend();
         }
 
         function stopMotors() {
@@ -700,7 +844,22 @@ mixerTab.initialize = function (callback, scrollPosition) {
                 clearInterval(wizardState.locateInterval);
                 wizardState.locateInterval = null;
             }
-            sendMotorValues(-1, FC.MISC.mincommand);  // All motors at mincommand
+            sendMotorValues(-1, getMotorStopValue());  // All motors stopped
+        }
+
+        function pauseBackgroundPolling() {
+            WIZARD_PAUSED_INTERVALS.forEach(function (name) {
+                if (wizardState.pausedIntervals.indexOf(name) === -1 && interval.pause(name)) {
+                    wizardState.pausedIntervals.push(name);
+                }
+            });
+        }
+
+        function resumeBackgroundPolling() {
+            wizardState.pausedIntervals.forEach(function (name) {
+                interval.resume(name);
+            });
+            wizardState.pausedIntervals = [];
         }
 
         function resetWizard(numMotors) {
@@ -759,20 +918,35 @@ mixerTab.initialize = function (callback, scrollPosition) {
         }
 
         function startMotorPulse(motorIndex) {
-            // Three short twitches with a pause, repeating
-            // ON 20ms, OFF 20ms, ON 20ms, OFF 20ms, ON 20ms, OFF 700ms (800ms cycle)
-            // Safety: every tick defaults to OFF unless inside an ON window
-            var spinValue = Math.round(FC.MISC.mincommand + 0.15 * (FC.MISC.maxthrottle - FC.MISC.mincommand));
-            var stopped = FC.MISC.mincommand;
+            // ON 300 ms, OFF 700 ms (1000 ms cycle): the pause is long enough for the
+            // motor to stop completely before the next pulse. A message is sent only on
+            // an edge, plus a keep-alive every 100 ms with the current value so a lost
+            // message is corrected quickly and a future firmware watchdog on
+            // MSP_SET_MOTOR keeps being fed. The 10 ms interval is only a clock.
+            var ON_TIME = 300;
+            var CYCLE = 1000;
+            var KEEPALIVE_MS = 100;
+            var spinValue = getMotorSpinValue();
+            var stopped = getMotorStopValue();
             var startTime = Date.now();
-            var CYCLE = 800;
+            var lastState = true;
+            var lastChange = startTime;
+            var lastSentAt = startTime;
 
             sendMotorValues(motorIndex, spinValue);
             wizardState.locateInterval = setInterval(function() {
-                var elapsed = (Date.now() - startTime) % CYCLE;
-                // ON windows: [0,20), [40,60), [80,100)
-                var isOn = (elapsed < 20) || (elapsed >= 40 && elapsed < 60) || (elapsed >= 80 && elapsed < 100);
-                sendMotorValues(motorIndex, isOn ? spinValue : stopped);
+                var now = Date.now();
+                var isOn = ((now - startTime) % CYCLE) < ON_TIME;
+                var edge = isOn !== lastState;
+                if (edge) {
+                    console.log('[motor pulse]', isOn ? 'ON ' : 'OFF', 'after', now - lastChange, 'ms');
+                    lastState = isOn;
+                    lastChange = now;
+                }
+                if (edge || now - lastSentAt >= KEEPALIVE_MS) {
+                    sendMotorValues(motorIndex, isOn ? spinValue : stopped);
+                    lastSentAt = now;
+                }
             }, 10);
         }
 
@@ -837,19 +1011,24 @@ mixerTab.initialize = function (callback, scrollPosition) {
             $('#wizard-intro').addClass('is-hidden');
             $('#wizard-progress').removeClass('is-hidden');
 
-            // Disable DShot beeper so it doesn't twitch all motors during locate
-            mspHelper.getSetting('dshot_beeper_enabled').then(function(setting) {
+            // Settings for spin/stop values were requested on open; wait for them
+            (wizardState.settingsLoaded || loadWizardSettings()).then(function() {
+                // Disable DShot beeper so it doesn't twitch all motors during locate
+                return mspHelper.getSetting('dshot_beeper_enabled');
+            }).then(function(setting) {
                 if (setting) {
                     wizardState.savedDshotBeeper = setting.value;
                     if (setting.value) {
-                        mspHelper.setSetting('dshot_beeper_enabled', 0, function() {
-                            startLocatingMotor(0);
+                        return new Promise(function (resolve) {
+                            mspHelper.setSetting('dshot_beeper_enabled', 0, resolve);
                         });
-                        return;
                     }
                 }
-                startLocatingMotor(0);
             }).catch(function() {
+                // proceed anyway
+            }).then(function() {
+                // Keep the MSP queue free for motor edges while the wizard runs
+                pauseBackgroundPolling();
                 startLocatingMotor(0);
             });
         });
@@ -857,6 +1036,7 @@ mixerTab.initialize = function (callback, scrollPosition) {
         // Emergency stop button click handler
         $('#wizard-stop-button').on('click', function() {
             stopMotors();
+            resumeBackgroundPolling();
             motorWizardModal.close();
         });
 
@@ -896,6 +1076,7 @@ mixerTab.initialize = function (callback, scrollPosition) {
                 return;
             }
             resetWizard(positions.length);
+            loadWizardSettings();
 
             // Update preview image
             const $wizardImg = $('#wizard-preview-img');
@@ -911,6 +1092,7 @@ mixerTab.initialize = function (callback, scrollPosition) {
         motorWizardModal.options.onClose = function() {
             stopMotors();
             wizardState.isActive = false;
+            resumeBackgroundPolling();
 
             // Restore DShot beeper if it was enabled before the wizard
             if (wizardState.savedDshotBeeper) {

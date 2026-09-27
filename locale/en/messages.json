@@ -5921,6 +5921,9 @@
     "mixerWizardStep3": {
         "message": "Make sure you can see/hear all motors"
     },
+    "mixerWizardStep4": {
+        "message": "Keep the USB cable connected: if the link drops while a motor is moving, the flight controller keeps the last motor command until it is reset"
+    },
     "mixerWizardLocating": {
         "message": "Motor"
     },

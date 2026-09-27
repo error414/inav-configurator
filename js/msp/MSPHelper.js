@@ -756,7 +756,6 @@ var mspHelper = (function () {
                     FC.SENSOR_DATA.debug[i] = data.getInt32((4 * i), 1);
                 break;
             case MSPCodes.MSP_SET_MOTOR:
-                console.log('Motor Speeds Updated');
                 break;
             // Additional baseflight commands that are not compatible with MultiWii
             case MSPCodes.MSP_UID:
