@@ -1966,15 +1966,19 @@ var mspHelper = (function () {
                 /* 7 bytes per motor, no header: uint32 rpm, uint8 frame
                  * success % over the last closed 1 s window (255 = unknown),
                  * uint16 frames expected in that window (0 when unknown).
+                 * An ESC that is silent (unplugged, no bidirectional DSHOT)
+                 * expected no frames at all, so a window with zero frames is
+                 * "no data" rather than 0 % success, whatever the % byte says.
                  * The old 4-byte layout is not accepted: 28 bytes reads as
                  * either 7x4 or 4x7, so there is nothing to sniff. */
                 FC.ESC_RPM = [];
                 for (let i = 0; i + 7 <= data.byteLength; i += 7) {
                     const frameSuccess = data.getUint8(i + 4);
+                    const frameTotal = data.getUint16(i + 5, true);
                     FC.ESC_RPM.push({
                         rpm: data.getUint32(i, true),
-                        frameSuccess: frameSuccess === 255 ? null : frameSuccess,
-                        frameTotal: data.getUint16(i + 5, true),
+                        frameSuccess: (frameSuccess === 255 || frameTotal === 0) ? null : frameSuccess,
+                        frameTotal: frameTotal,
                     });
                 }
                 break;
