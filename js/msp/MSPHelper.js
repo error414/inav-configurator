@@ -1957,6 +1957,28 @@ var mspHelper = (function () {
                 console.log("MZTC config saved");
                 break;
 
+            case MSPCodes.MSP2_INAV_ESC_RPM:
+                if (dataHandler.unsupported) {
+                    // Firmware built without USE_ESC_SENSOR has no RPM to offer.
+                    FC.ESC_RPM = [];
+                    break;
+                }
+                /* 7 bytes per motor, no header: uint32 rpm, uint8 frame
+                 * success % over the last closed 1 s window (255 = unknown),
+                 * uint16 frames expected in that window (0 when unknown).
+                 * The old 4-byte layout is not accepted: 28 bytes reads as
+                 * either 7x4 or 4x7, so there is nothing to sniff. */
+                FC.ESC_RPM = [];
+                for (let i = 0; i + 7 <= data.byteLength; i += 7) {
+                    const frameSuccess = data.getUint8(i + 4);
+                    FC.ESC_RPM.push({
+                        rpm: data.getUint32(i, true),
+                        frameSuccess: frameSuccess === 255 ? null : frameSuccess,
+                        frameTotal: data.getUint16(i + 5, true),
+                    });
+                }
+                break;
+
             case MSPCodes.MSP2_INAV_ESC_SRXL2_STATUS:
                 if (dataHandler.unsupported) {
                     /* Built without the Smart ESC driver. Recorded rather than

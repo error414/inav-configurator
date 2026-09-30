@@ -2744,6 +2744,18 @@
     "motorsEnableControl": {
         "message": "I understand the risks, propellers are removed - Enable motor control."
     },
+    "motorsEscRpm": {
+        "message": "$1 RPM"
+    },
+    "motorsEscTelemetry": {
+        "message": "$1 %"
+    },
+    "motorsEscTelemetryUnknown": {
+        "message": "—"
+    },
+    "motorsEscTelemetryHelp": {
+        "message": "ESC telemetry over the last 1 s window: percentage of frames decoded successfully and number of frames expected per second (bidirectional DSHOT, or ESC sensor when that is off). — means the flight controller expected no frames in that window."
+    },
     "sensorsInfo": {
         "message": "Keep in mind that using fast update periods and rendering multiple graphs at the same time is resource heavy and will burn your battery quicker if you use a laptop.<br />We recommend to only render graphs for sensors you are interested in while using reasonable update periods."
     },

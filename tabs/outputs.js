@@ -74,6 +74,15 @@ outputsTab.initialize = function (callback) {
             mspHelper.getSetting("motor_direction_inverted").then((data)=>{
                 self.motorDirectionInverted=data.value;
             }).then(callback)
+        },
+        /* With the RPM filter on, the firmware has a live RPM for every motor
+         * (bidirectional DSHOT or ESC telemetry), so the motor bars can show
+         * it next to the throttle. Older firmware without the setting reports
+         * null, which reads as "off". */
+        function(callback) {
+            mspHelper.getSetting("rpm_gyro_filter_enabled").then((data)=>{
+                self.rpmFilterEnabled = !!(data && data.value);
+            }).then(callback)
         }
     ]);
     loadChainer.setExitPoint(load_html);
@@ -774,10 +783,14 @@ outputsTab.initialize = function (callback) {
                 <div class="m-block motor-' + i + '">\
                     <div class="meter-bar">\
                         <div class="label"></div>\
+                        <div class="rpm"></div>\
+                        <div class="telemetry"></div>\
                         <div class="indicator">\
                             <div class="label">\
                                 <div class="label"></div>\
                             </div>\
+                            <div class="rpm"></div>\
+                            <div class="telemetry"></div>\
                         </div>\
                     </div>\
                 </div>\
@@ -940,7 +953,14 @@ outputsTab.initialize = function (callback) {
         $motorsEnableTestMode.trigger('change');
 
         function getPeriodicMotorOutput() {
-            MSP.send_message(MSPCodes.MSP_MOTOR, false, false, getPeriodicServoOutput);
+            MSP.send_message(MSPCodes.MSP_MOTOR, false, false, self.rpmFilterEnabled ? getPeriodicEscRpm : getPeriodicServoOutput);
+        }
+
+        /* Only asked for while the RPM filter is on. Firmware without ESC
+         * telemetry answers "unsupported", which still reaches the callback
+         * and leaves FC.ESC_RPM empty, so the chain never stalls. */
+        function getPeriodicEscRpm() {
+            MSP.send_message(MSPCodes.MSP2_INAV_ESC_RPM, false, false, getPeriodicServoOutput);
         }
 
         function getPeriodicServoOutput() {
@@ -948,6 +968,45 @@ outputsTab.initialize = function (callback) {
         }
 
         var full_block_scale = FC.MISC.maxthrottle - FC.MISC.mincommand;
+
+        function getMotorRpmValue(index) {
+            if (!self.rpmFilterEnabled || index >= FC.ESC_RPM.length) {
+                return '';
+            }
+            return i18n.getMessage('motorsEscRpm', [FC.ESC_RPM[index].rpm]);
+        }
+
+        /* Telemetry frame success % for the last closed 1 s window. The
+         * firmware reports 255 / 0 when it expected no frames at
+         * all (just booted, no telemetry, SRXL2 which does not count), which
+         * the helper has already turned into null; that is shown as "unknown",
+         * not as 0 %. */
+        function getMotorTelemetryValue(index) {
+            if (!self.rpmFilterEnabled || index >= FC.ESC_RPM.length) {
+                return '';
+            }
+            const telemetry = FC.ESC_RPM[index];
+            if (telemetry.frameSuccess === null) {
+                return i18n.getMessage('motorsEscTelemetryUnknown');
+            }
+            return i18n.getMessage('motorsEscTelemetry', [telemetry.frameSuccess]);
+        }
+
+        /* A healthy link decodes practically every frame, so anything under
+         * 98 % is flagged as an error. Unknown gets no colour. */
+        function getMotorTelemetryClass(index) {
+            if (!self.rpmFilterEnabled || index >= FC.ESC_RPM.length || FC.ESC_RPM[index].frameSuccess === null) {
+                return '';
+            }
+            return FC.ESC_RPM[index].frameSuccess < 98 ? 'error' : '';
+        }
+
+        function getMotorTelemetryTitle(index) {
+            if (!self.rpmFilterEnabled || index >= FC.ESC_RPM.length) {
+                return '';
+            }
+            return i18n.getMessage('motorsEscTelemetryHelp');
+        }
 
         function update_ui() {
             var previousArmState = self.armed,
@@ -965,6 +1024,12 @@ outputsTab.initialize = function (callback) {
                 color = parseInt(data * 0.009);
 
                 $('.motor-' + i + ' .label', motors_wrapper).text(getMotorOutputValue(FC.MOTOR_DATA[i]));
+                $('.motor-' + i + ' .rpm', motors_wrapper).text(getMotorRpmValue(i));
+                $('.motor-' + i + ' .telemetry', motors_wrapper)
+                    .text(getMotorTelemetryValue(i))
+                    .attr('title', getMotorTelemetryTitle(i))
+                    .removeClass('error')
+                    .addClass(getMotorTelemetryClass(i));
                 $('.motor-' + i + ' .indicator', motors_wrapper).css({ 'margin-top': margin_top + 'px', 'height': height + 'px', 'background-color': '#37a8db' + color + ')' });
             }
 
