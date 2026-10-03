@@ -34,6 +34,10 @@
         "message": "Русский",
         "_comment": "Don't translate!"
     },
+    "language_sr": {
+        "message": "Srpski",
+        "_comment": "Don't translate!"
+    },
     "language": {
         "message": "Language"
     },
@@ -1627,6 +1631,9 @@
     },
     "portsTelemetryDisabled": {
         "message": "Disabled"
+    },
+    "portsBaudrateFromFC": {
+        "message": "$1 (from FC)"
     },
     "portsFunction_MSP": {
         "message": "MSP"
