@@ -422,9 +422,29 @@ outputsTab.initialize = function (callback) {
 
         $escProtocol.val(FC.ADVANCED_CONFIG.motorPwmProtocol);
 
+        /*
+         * Bidirectional DSHOT is a property of the DSHOT waveform itself, so the
+         * switch is only offered for the DSHOT protocols: the analog ones carry
+         * nothing back and SRXL2 reads its telemetry over the UART. On firmware
+         * without the setting Settings.processHtml() removes the input, and the
+         * block stays hidden rather than showing an empty box.
+         */
+        function dshotBidirUpdateVisibility() {
+            const protocol = escProtocols[FC.ADVANCED_CONFIG.motorPwmProtocol];
+            const isDshot = !!protocol && /^DSHOT/.test(protocol.name);
+            const $bidir = $('#dshot_bidir_enabled');
+            const bidirOn = $bidir.is(':checked');
+
+            $('#dshot-bidir').toggle(isDshot && $bidir.length > 0);
+            $('#dshot-bidir-warning').toggle(bidirOn);
+            $('#dshot_edt_enabled').closest('.checkbox').toggle(bidirOn);
+        }
+        $('#dshot_bidir_enabled').on('change', dshotBidirUpdateVisibility);
+
         $escProtocol.on('change', function () {
             FC.ADVANCED_CONFIG.motorPwmProtocol = $(this).val();
             srxl2UpdateVisibility();
+            dshotBidirUpdateVisibility();
         });
 
         $idlePercent.on('change', handleIdleMessageBox);
@@ -441,10 +461,14 @@ outputsTab.initialize = function (callback) {
             $reverseRow.toggle($reverseEnable.is(':checked'));
         }
 
+        /* Same reason as above: the bidirectional DSHOT checkbox is a data-setting
+         * input, so its state is only known once the settings have been read. */
         if (settingsPromise && typeof settingsPromise.then === 'function') {
             settingsPromise.then(srxl2ReverseInit);
+            settingsPromise.then(dshotBidirUpdateVisibility);
         } else {
             srxl2ReverseInit();
+            dshotBidirUpdateVisibility();
         }
 
         $("#esc-protocols").show();
